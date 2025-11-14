@@ -14,13 +14,6 @@ npm-debug.log*
 .env.local
 .env.*.local
 
-# Vite
-vite.config.ts
-vite.config.js
-
-# Tailwind CSS
-tailwind.config.js
-
 # Miscellaneous
 .DS_Store
 *.swp
