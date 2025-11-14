@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Vite
+vite.config.ts
+vite.config.js
+
+# Tailwind CSS
+tailwind.config.js
+
+# Miscellaneous
+.DS_Store
+*.swp
+*.swo
+
+# IDE/config files
+.vscode/
+.idea/
