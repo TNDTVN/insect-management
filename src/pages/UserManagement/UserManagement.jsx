@@ -22,9 +22,13 @@ import userService from '../../services/userService';
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // State lọc và tìm kiếm
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  
+  // State cho Modal và chỉnh sửa
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserDetail, setShowUserDetail] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -43,17 +47,24 @@ export default function UserManagement() {
   const [editLoading, setEditLoading] = useState(false);
   const fileInputRef = useRef(null);
 
+  // --- STATE PHÂN TRANG (THÊM MỚI) ---
+  const [page, setPage] = useState(1);
+  const limit = 10; // Giới hạn 10 user mỗi trang
+
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  // Reset về trang 1 khi thay đổi bộ lọc (THÊM MỚI)
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterRole, filterStatus]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
       const data = await userService.getAllUsers();
       console.log('Fetched users:', data);
-      
-      // KHÔNG CẦN TRANSFORM DATA NỮA
       setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -148,10 +159,17 @@ export default function UserManagement() {
         date_of_birth: editFormData.date_of_birth,
         address: editFormData.address,
         email: editFormData.email,
-        role: editFormData.role,
+        // XÓA DÒNG NÀY: role: editFormData.role, 
         avatar: avatarFile,
       };
-      console.log('Submitting update data:', updateData); // Log dữ liệu gửi đi
+
+      // THÊM ĐOẠN NÀY: Chỉ gửi role nếu giá trị bị thay đổi
+      // Nếu role mới khác role cũ thì mới thêm vào updateData
+      if (editFormData.role !== selectedUser.role) {
+          updateData.role = editFormData.role;
+      }
+
+      console.log('Submitting update data:', updateData);
       await userService.updateUser(selectedUser.id, updateData);
       toast.success('Cập nhật thông tin người dùng thành công');
       setShowEditModal(false);
@@ -185,6 +203,7 @@ export default function UserManagement() {
     setShowUserDetail(true);
   };
 
+  // 1. Lọc dữ liệu tổng
   const filteredUsers = users.filter((user) => {
     const matchesSearch =
       user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -199,6 +218,20 @@ export default function UserManagement() {
 
     return matchesSearch && matchesRole && matchesStatus;
   });
+
+  // 2. Tính toán phân trang (THÊM MỚI)
+  const totalPages = Math.ceil(filteredUsers.length / limit);
+  const startIndex = (page - 1) * limit;
+  const paginatedUsers = filteredUsers.slice(startIndex, startIndex + limit);
+
+  // 3. Hàm điều khiển trang (THÊM MỚI)
+  const handleNextPage = () => {
+    if (page < totalPages) setPage(prev => prev + 1);
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) setPage(prev => prev - 1);
+  };
 
   const stats = {
     total: users.length,
@@ -347,7 +380,8 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredUsers.map((user) => (
+              {/* Sử dụng paginatedUsers thay vì filteredUsers */}
+              {paginatedUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -464,7 +498,30 @@ export default function UserManagement() {
         )}
       </div>
 
-      {/* Edit User Modal - ĐÃ CHỈNH SỬA */}
+      {/* Pagination Controls - THÊM MỚI */}
+      {filteredUsers.length > 0 && (
+        <div className="flex justify-center gap-4 mt-6 pb-6">
+            <button
+                onClick={handlePrevPage}
+                disabled={page === 1}
+                className={`px-4 py-2 rounded-lg ${page === 1 ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+                Trang trước
+            </button>
+            <span className="self-center">
+                Trang {page} / {totalPages}
+            </span>
+            <button
+                onClick={handleNextPage}
+                disabled={page >= totalPages}
+                className={`px-4 py-2 rounded-lg ${page >= totalPages ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+                Trang sau
+            </button>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[95vh] flex flex-col">

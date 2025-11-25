@@ -1,29 +1,33 @@
+// src/services/historyService.js
 import api from './api';
 
 const historyService = {
-  getAll: async (page = 1, limit = 12, userId = null) => {
+  getAll: async (skip = 0, limit = 12, userId = null) => {
     try {
-      const skip = (page - 1) * limit;
       const params = { skip, limit };
       if (userId) params.user_id = userId;
 
-      const [historyRes, countRes] = await Promise.all([
-        api.get('/history/', { params }),
-        api.get('/history/count', { params: userId ? { user_id: userId } : {} }),
-      ]);
-
-      console.log('📡 History API Response:', historyRes.data);
-      return {
-        items: historyRes.data,
-        total: countRes.data.total,
-        page,
-        limit,
-      };
+      // SỬA: Gọi API getAll trả về danh sách history
+      const response = await api.get('/history/', { params });
+      return response.data;
     } catch (error) {
       console.error('Error fetching history:', error);
       throw error;
     }
   },
+
+  // --- THÊM HÀM NÀY ĐỂ SỬA LỖI "is not a function" ---
+  getHistoryCount: async (userId) => {
+    try {
+      const params = userId ? { user_id: userId } : {};
+      const response = await api.get('/history/count', { params });
+      return response.data; // Trả về { total: number }
+    } catch (error) {
+      console.error('Error fetching history count:', error);
+      throw error;
+    }
+  },
+  // ----------------------------------------------------
 
   getObjectCounts: async (imageIds) => {
     try {
@@ -35,7 +39,6 @@ const historyService = {
           'Content-Type': 'application/json',
         },
       });
-      console.log('📡 Object counts API Response:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error fetching object counts:', error);
@@ -46,7 +49,6 @@ const historyService = {
   getImageDetail: async (imageId) => {
     try {
       const response = await api.get(`/history/image/${imageId}/detail`);
-      console.log('📡 History Detail API Response:', response.data);
       return response;
     } catch (error) {
       console.error('Error fetching history detail:', error);
@@ -76,11 +78,9 @@ const historyService = {
   exportHistory: async () => {
     try {
       const response = await api.get('/history/admin/export');
-      console.log('✅ Export history response:', response.data);
       return response?.data || [];
     } catch (error) {
       console.error('❌ Lỗi khi xuất lịch sử:', error);
-      console.error('Error details:', error.response?.data);
       throw error;
     }
   },

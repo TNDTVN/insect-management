@@ -13,7 +13,7 @@ npm-debug.log*
 .env
 .env.local
 .env.*.local
-
+.cmai
 # Miscellaneous
 .DS_Store
 *.swp

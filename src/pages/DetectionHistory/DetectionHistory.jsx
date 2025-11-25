@@ -20,16 +20,29 @@ export default function DetectionHistory() {
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // State cho bộ lọc
   const [searchTerm, setSearchTerm] = useState('');
   const [filterUser, setFilterUser] = useState('all');
+  
+  // State dữ liệu phụ
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
+
+  // --- STATE PHÂN TRANG CLIENT-SIDE ---
+  const [page, setPage] = useState(1);
+  const limit = 10; // Giới hạn số dòng mỗi trang (có thể chỉnh lên 20 hoặc 50)
 
   useEffect(() => {
     fetchDetectionHistory();
     fetchUsers();
     fetchStats();
   }, []);
+
+  // Reset về trang 1 khi thay đổi bộ lọc
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterUser]);
 
   const fetchDetectionHistory = async () => {
     try {
@@ -40,7 +53,7 @@ export default function DetectionHistory() {
       data.forEach(item => {
         if (!groupedByImage[item.image_id]) {
           groupedByImage[item.image_id] = {
-            ...item, // Giữ toàn bộ thông tin của item, bao gồm account
+            ...item, 
             total_objects: 0,
             unique_species: new Set(),
             all_detections: []
@@ -58,7 +71,7 @@ export default function DetectionHistory() {
         result_species: Array.from(imageGroup.unique_species).join(', '),
         confidence: imageGroup.all_detections[0]?.confidence || 0,
         detected_at: imageGroup.all_detections[0]?.detected_at,
-        account: imageGroup.account // Đảm bảo trường account được giữ lại
+        account: imageGroup.account
       }));
 
       console.log('📊 Grouped history data:', uniqueImages);
@@ -108,7 +121,6 @@ export default function DetectionHistory() {
   const handleExport = async () => {
     try {
       const data = await historyService.exportHistory();
-      console.log('Export history data received:', data); // Log dữ liệu nhận được
       if (!data || data.length === 0) {
         toast.warn('Không có dữ liệu lịch sử để xuất.');
         return;
@@ -125,12 +137,11 @@ export default function DetectionHistory() {
       toast.success('Đã xuất dữ liệu lịch sử');
     } catch (error) {
       console.error('Error exporting history:', error);
-      console.error('Error details:', error.response?.data);
       toast.error('Lỗi khi xuất dữ liệu');
     }
   };
 
-  // Lọc dữ liệu - SỬA ĐỂ HIỂN THỊ ĐÚNG USERNAME
+  // 1. Lọc dữ liệu tổng (Search + Filter)
   const filteredHistory = history.filter(item => {
     const matchesSearch = 
       item.result_species?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -140,6 +151,24 @@ export default function DetectionHistory() {
 
     return matchesSearch && matchesUser;
   });
+
+  // 2. Tính toán phân trang Client-side
+  const totalPages = Math.ceil(filteredHistory.length / limit);
+  const startIndex = (page - 1) * limit;
+  const paginatedHistory = filteredHistory.slice(startIndex, startIndex + limit);
+
+  // 3. Hàm điều khiển trang
+  const handleNextPage = () => {
+    if (page < totalPages) {
+        setPage(prev => prev + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) {
+        setPage(prev => prev - 1);
+    }
+  };
 
   if (loading) {
     return (
@@ -285,7 +314,8 @@ export default function DetectionHistory() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredHistory.map((item) => (
+              {/* SỬA: Map qua paginatedHistory thay vì filteredHistory */}
+              {paginatedHistory.map((item) => (
                 <tr key={item.image_id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     {item.image?.annotated_path ? (
@@ -295,7 +325,6 @@ export default function DetectionHistory() {
                         className="h-12 w-12 object-cover rounded border border-gray-200"
                         onError={(e) => {
                           e.target.style.display = 'none';
-                          // Hiển thị placeholder nếu ảnh lỗi
                           const placeholder = document.createElement('div');
                           placeholder.className = 'h-12 w-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center';
                           placeholder.innerHTML = '<Eye className="h-5 w-5 text-gray-400" />';
@@ -338,7 +367,7 @@ export default function DetectionHistory() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => navigate(`/history/${item.image_id}`, { 
-                            state: { fromAdmin: true } // THÊM STATE NÀY
+                            state: { fromAdmin: true } 
                         })}
                         className="text-blue-600 hover:text-blue-900 p-1"
                         title="Xem chi tiết"
@@ -367,6 +396,29 @@ export default function DetectionHistory() {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls - THÊM MỚI */}
+      {filteredHistory.length > 0 && (
+        <div className="flex justify-center gap-4 mt-6 pb-6">
+            <button
+                onClick={handlePrevPage}
+                disabled={page === 1}
+                className={`px-4 py-2 rounded-lg ${page === 1 ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+                Trang trước
+            </button>
+            <span className="self-center">
+                Trang {page} / {totalPages}
+            </span>
+            <button
+                onClick={handleNextPage}
+                disabled={page >= totalPages}
+                className={`px-4 py-2 rounded-lg ${page >= totalPages ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+                Trang sau
+            </button>
+        </div>
+      )}
     </div>
   );
 }

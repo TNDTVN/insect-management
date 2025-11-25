@@ -1,3 +1,4 @@
+// src/pages/ModelManagement/ModelManagement.jsx
 import {
   AlertCircle,
   Cpu,
@@ -6,6 +7,7 @@ import {
   Play,
   Plus,
   Save,
+  Search, // Thêm Search icon
   Trash2,
   Upload,
   X,
@@ -19,12 +21,20 @@ const ModelManagement = () => {
   const { user } = useAuth();
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedModel, setSelectedModel] = useState(null);
   const [viewSpecies, setViewSpecies] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
+
+  // --- 1. STATE CHO PHÂN TRANG & TÌM KIẾM ---
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
+  const [page, setPage] = useState(1);
+  const limit = 6; // Hiển thị 6 model mỗi trang (lưới 3x2)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -55,6 +65,11 @@ const ModelManagement = () => {
     fetchModels();
   }, []);
 
+  // --- 2. RESET TRANG KHI LỌC ---
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterStatus]);
+
   const fetchModels = async () => {
     try {
       setLoading(true);
@@ -67,6 +82,33 @@ const ModelManagement = () => {
       setLoading(false);
     }
   };
+
+  // --- 3. LOGIC LỌC & PHÂN TRANG ---
+  const filteredModels = models.filter(model => {
+    const matchesSearch = 
+        model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        model.version.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = 
+        filterStatus === 'all' || 
+        (filterStatus === 'active' && model.is_active) || 
+        (filterStatus === 'inactive' && !model.is_active);
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const totalPages = Math.ceil(filteredModels.length / limit);
+  const startIndex = (page - 1) * limit;
+  const paginatedModels = filteredModels.slice(startIndex, startIndex + limit);
+
+  const handleNextPage = () => {
+    if (page < totalPages) setPage(prev => prev + 1);
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) setPage(prev => prev - 1);
+  };
+  // ------------------------------------
 
   const handleAddSpecies = () => {
     setFormData(prev => ({
@@ -152,14 +194,10 @@ const ModelManagement = () => {
       alert('Vui lòng chọn file model');
       return;
     }
-    // Chỉ kiểm tra species_images nếu có species_file
+    
     if (formData.species_file && formData.species_data.length > 0) {
       if (formData.species_data.length !== formData.species_images.length) {
         alert('Số lượng file ảnh phải khớp với số lượng loài');
-        return;
-      }
-      if (formData.species_images.some(img => !img || img.name.startsWith('placeholder_'))) {
-        alert('Vui lòng chọn file ảnh hợp lệ cho tất cả các loài');
         return;
       }
     }
@@ -226,7 +264,6 @@ const ModelManagement = () => {
   const openSpeciesModal = async (model) => {
     try {
       const species = await modelService.getModelSpecies(model.id);
-      // Sắp xếp species theo class_id
       const sortedSpecies = species.sort((a, b) => a.class_id - b.class_id);
       setViewSpecies({ model, species: sortedSpecies });
     } catch (error) {
@@ -238,7 +275,6 @@ const ModelManagement = () => {
   const openEditModal = async (model) => {
     try {
       const species = await modelService.getModelSpecies(model.id);
-      // Sắp xếp species theo class_id
       const sortedSpecies = species.sort((a, b) => a.class_id - b.class_id);
       setSelectedModel(model);
       setFormData({
@@ -281,6 +317,176 @@ const ModelManagement = () => {
     });
   };
 
+  // Helper render function
+  const renderSpeciesList = () => (
+    <div className="species-list-container space-y-4 mb-4 max-h-[500px] overflow-y-auto border border-gray-200 rounded-lg p-4 bg-gray-50">
+      {formData.species_data.map((species, index) => {
+        const previewUrl = formData.species_images[index]
+          ? URL.createObjectURL(formData.species_images[index])
+          : species.image_path
+            ? `http://localhost:8000/public/species_images/${species.image_path}`
+            : null;
+
+        return (
+          <div key={index} className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-4 border-b border-gray-100 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full">
+                  #{index + 1}
+                </span>
+                <span className="text-sm font-medium text-gray-500">
+                  Class ID: {species.class_id}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRemoveSpecies(index)}
+                className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                title="Xóa loài này"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+              {/* Image Column */}
+              <div className="md:col-span-4 lg:col-span-3">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Hình ảnh minh họa
+                </label>
+                <div className="relative group w-full aspect-[4/3] rounded-lg border-2 border-dashed border-gray-300 overflow-hidden bg-gray-50 hover:border-blue-500 transition-colors">
+                  {previewUrl ? (
+                    <>
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=No+Image'; }}
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
+                        <Upload className="h-6 w-6 mb-1" />
+                        <span className="text-xs font-medium">Thay đổi ảnh</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                      <Upload className="h-8 w-8 mb-2" />
+                      <span className="text-xs text-center px-2">Nhấn để tải ảnh</span>
+                    </div>
+                  )}
+                  
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png"
+                    onChange={(e) => handleSpeciesImageChange(index, e.target.files[0])}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    title="Chọn ảnh"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1 text-center truncate">
+                  {formData.species_images[index]?.name || species.image_path || 'Chưa có file'}
+                </p>
+              </div>
+
+              {/* Data Columns */}
+              <div className="md:col-span-8 lg:col-span-9 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Class ID <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={species.class_id}
+                      onChange={(e) => handleSpeciesChange(index, 'class_id', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="md:col-span-2"></div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Tên tiếng Việt <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={species.name_vi}
+                      onChange={(e) => handleSpeciesChange(index, 'name_vi', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
+                      placeholder="Ví dụ: Muỗi vằn"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Tên tiếng Anh <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={species.name_en}
+                      onChange={(e) => handleSpeciesChange(index, 'name_en', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 italic"
+                      placeholder="Ví dụ: Aedes aegypti"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Mô tả</label>
+                  <textarea
+                    value={species.description}
+                    onChange={(e) => handleSpeciesChange(index, 'description', e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500"
+                    placeholder="Mô tả đặc điểm nhận dạng..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Tác hại</label>
+                    <textarea
+                      value={species.harm}
+                      onChange={(e) => handleSpeciesChange(index, 'harm', e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-yellow-500 bg-yellow-50"
+                      placeholder="Gây bệnh..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Lợi ích</label>
+                    <textarea
+                      value={species.benefit}
+                      onChange={(e) => handleSpeciesChange(index, 'benefit', e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-green-500 bg-green-50"
+                      placeholder="Thụ phấn..."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Phòng ngừa</label>
+                    <textarea
+                      value={species.prevention}
+                      onChange={(e) => handleSpeciesChange(index, 'prevention', e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-blue-500 bg-blue-50"
+                      placeholder="Vệ sinh..."
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -306,12 +512,41 @@ const ModelManagement = () => {
         </button>
       </div>
 
-      {/* Models Grid */}
+      {/* --- 4. THANH TÌM KIẾM VÀ BỘ LỌC --- */}
+      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm model theo tên hoặc phiên bản..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex gap-4">
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value="active">Đang hoạt động</option>
+              <option value="inactive">Không hoạt động</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Models Grid - Hiển thị paginatedModels */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {models.map((model) => (
+        {paginatedModels.map((model) => (
           <div
             key={model.id}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 flex flex-col h-full"
           >
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -321,7 +556,7 @@ const ModelManagement = () => {
                   <Cpu className="h-6 w-6" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-gray-900 truncate">{model.name}</h3>
+                  <h3 className="font-semibold text-gray-900 truncate" title={model.name}>{model.name}</h3>
                   <p className="text-sm text-gray-500 truncate">Version: {model.version}</p>
                 </div>
               </div>
@@ -332,16 +567,16 @@ const ModelManagement = () => {
               )}
             </div>
 
-            <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+            <p className="text-gray-600 text-sm mb-4 line-clamp-2 flex-grow">
               {model.description || 'Không có mô tả'}
             </p>
 
             <div className="space-y-2 text-sm text-gray-600 mb-4">
-              <div className="truncate">Đường dẫn: {model.file_path}</div>
+              <div className="truncate" title={model.file_path}>Đường dẫn: {model.file_path}</div>
               <div>Ngày tạo: {new Date(model.uploaded_at).toLocaleDateString()}</div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mt-auto">
               {!model.is_active && (
                 <button
                   onClick={() => handleActivate(model.id)}
@@ -385,10 +620,33 @@ const ModelManagement = () => {
         ))}
       </div>
 
-      {models.length === 0 && (
-        <div className="text-center py-12">
+      {filteredModels.length === 0 && (
+        <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-gray-200">
           <Cpu className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <p className="text-gray-500">Chưa có model nào</p>
+          <p className="text-gray-500">Không tìm thấy model nào</p>
+        </div>
+      )}
+
+      {/* --- 5. ĐIỀU KHIỂN PHÂN TRANG --- */}
+      {filteredModels.length > 0 && (
+        <div className="flex justify-center gap-4 mt-6 pb-6">
+            <button
+                onClick={handlePrevPage}
+                disabled={page === 1}
+                className={`px-4 py-2 rounded-lg ${page === 1 ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+                Trang trước
+            </button>
+            <span className="self-center font-medium">
+                Trang {page} / {totalPages}
+            </span>
+            <button
+                onClick={handleNextPage}
+                disabled={page >= totalPages}
+                className={`px-4 py-2 rounded-lg ${page >= totalPages ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+            >
+                Trang sau
+            </button>
         </div>
       )}
 
@@ -520,147 +778,8 @@ const ModelManagement = () => {
                     </span>
                   </div>
 
-                  <div className="species-list-container space-y-4 mb-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-4">
-                    {formData.species_data.map((species, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                        <div className="flex justify-between items-center mb-3">
-                          <h4 className="font-medium">Loài #{index + 1}</h4>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSpecies(index)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <XCircle className="h-5 w-5" />
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Tên tiếng Anh *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={species.name_en}
-                              onChange={(e) => handleSpeciesChange(index, 'name_en', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Aedes aegypti"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Tên tiếng Việt *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={species.name_vi}
-                              onChange={(e) => handleSpeciesChange(index, 'name_vi', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Muỗi vằn"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Class ID *
-                            </label>
-                            <input
-                              type="number"
-                              required
-                              value={species.class_id}
-                              onChange={(e) => handleSpeciesChange(index, 'class_id', parseInt(e.target.value))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="0"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              File ảnh (.jpg, .jpeg, .png)
-                            </label>
-                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                              <Upload className="mx-auto h-6 w-6 text-gray-400 mb-1" />
-                              <p className="text-xs text-gray-600 mb-1 truncate">
-                                {formData.species_images[index] 
-                                  ? formData.species_images[index].name 
-                                  : species.image_path 
-                                    ? `Hiện tại: ${species.image_path}` 
-                                    : 'Chọn file ảnh (nếu muốn thay đổi)'}
-                              </p>
-                              <input
-                                type="file"
-                                accept=".jpg,.jpeg,.png"
-                                onChange={(e) => handleSpeciesImageChange(index, e.target.files[0])}
-                                className="hidden"
-                                id={`species-image-${index}`}
-                              />
-                              <label
-                                htmlFor={`species-image-${index}`}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded cursor-pointer text-sm inline-block"
-                              >
-                                Chọn File
-                              </label>
-                            </div>
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Mô tả
-                            </label>
-                            <textarea
-                              value={species.description}
-                              onChange={(e) => handleSpeciesChange(index, 'description', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Mô tả về loài..."
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Tác hại
-                            </label>
-                            <textarea
-                              value={species.harm}
-                              onChange={(e) => handleSpeciesChange(index, 'harm', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Tác hại của loài..."
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Lợi ích
-                            </label>
-                            <textarea
-                              value={species.benefit}
-                              onChange={(e) => handleSpeciesChange(index, 'benefit', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Lợi ích của loài..."
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Phòng ngừa
-                            </label>
-                            <textarea
-                              value={species.prevention}
-                              onChange={(e) => handleSpeciesChange(index, 'prevention', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Biện pháp phòng ngừa..."
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Render list using the new helper function */}
+                  {renderSpeciesList()}
 
                   <div className="flex justify-center">
                     <button
@@ -724,7 +843,7 @@ const ModelManagement = () => {
         </div>
       )}
 
-      {/* Edit Model Modal - Cấu trúc tương tự Add Modal */}
+      {/* Edit Model Modal */}
       {showEditModal && selectedModel && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
@@ -840,7 +959,7 @@ const ModelManagement = () => {
                   </div>
                 </div>
                 
-                {/* Species Section với scroll */}
+                {/* Species Section */}
                 <div>
                   <div className="flex justify-between items-center mb-4">
                     <label className="block text-sm font-medium text-gray-700">
@@ -851,147 +970,8 @@ const ModelManagement = () => {
                     </span>
                   </div>
 
-                  <div className="species-list-container space-y-4 mb-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-4">
-                    {formData.species_data.map((species, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex justify-between items-center mb-3">
-                          <h4 className="font-medium">Loài #{index + 1}</h4>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSpecies(index)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <XCircle className="h-5 w-5" />
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Tên tiếng Anh *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={species.name_en}
-                              onChange={(e) => handleSpeciesChange(index, 'name_en', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Aedes aegypti"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Tên tiếng Việt *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={species.name_vi}
-                              onChange={(e) => handleSpeciesChange(index, 'name_vi', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Muỗi vằn"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Class ID *
-                            </label>
-                            <input
-                              type="number"
-                              required
-                              value={species.class_id}
-                              onChange={(e) => handleSpeciesChange(index, 'class_id', parseInt(e.target.value))}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="0"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              File ảnh (.jpg, .jpeg, .png)
-                            </label>
-                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-                              <Upload className="mx-auto h-6 w-6 text-gray-400 mb-1" />
-                              <p className="text-xs text-gray-600 mb-1">
-                                {formData.species_images[index] 
-                                  ? formData.species_images[index].name 
-                                  : species.image_path 
-                                    ? `Hiện tại: ${species.image_path}` 
-                                    : 'Chọn file ảnh (nếu muốn thay đổi)'}
-                              </p>
-                              <input
-                                type="file"
-                                accept=".jpg,.jpeg,.png"
-                                onChange={(e) => handleSpeciesImageChange(index, e.target.files[0])}
-                                className="hidden"
-                                id={`species-image-${index}`}
-                              />
-                              <label
-                                htmlFor={`species-image-${index}`}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded cursor-pointer text-sm"
-                              >
-                                Chọn File
-                              </label>
-                            </div>
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Mô tả
-                            </label>
-                            <textarea
-                              value={species.description}
-                              onChange={(e) => handleSpeciesChange(index, 'description', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Mô tả về loài..."
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Tác hại
-                            </label>
-                            <textarea
-                              value={species.harm}
-                              onChange={(e) => handleSpeciesChange(index, 'harm', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Tác hại của loài..."
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Lợi ích
-                            </label>
-                            <textarea
-                              value={species.benefit}
-                              onChange={(e) => handleSpeciesChange(index, 'benefit', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Lợi ích của loài..."
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Phòng ngừa
-                            </label>
-                            <textarea
-                              value={species.prevention}
-                              onChange={(e) => handleSpeciesChange(index, 'prevention', e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                              placeholder="Biện pháp phòng ngừa..."
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Render list using the new helper function */}
+                  {renderSpeciesList()}
 
                   <div className="flex justify-center">
                     <button
@@ -1129,7 +1109,7 @@ const ModelManagement = () => {
                       src={`http://localhost:8000/public/species_images/${species.image_path}`}
                       alt={species.name_en}
                       className="w-full h-32 object-cover rounded-lg mb-2"
-                      onError={(e) => { e.target.src = '/path/to/fallback-image.jpg'; }}
+                      onError={(e) => { e.target.src = 'https://placehold.co/400x300?text=No+Image'; }}
                     />
                     <p className="text-sm text-gray-600 italic mb-2 truncate">{species.name_en}</p>
                     <p className="text-sm text-gray-700 line-clamp-2 mb-2">
