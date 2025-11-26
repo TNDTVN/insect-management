@@ -1,3 +1,4 @@
+// pages/Dashboard.jsx
 import {
   BarElement,
   CategoryScale,
@@ -41,25 +42,11 @@ export default function Dashboard() {
       try {
         if (user) {
           const data = await statisticsService.getDashboardStatistics();
-          console.log('Dữ liệu thống kê:', data); // In dữ liệu để kiểm tra
           setStats(data);
         }
       } catch (error) {
         console.error('Lỗi khi lấy thống kê:', error);
-        setStats({
-          totalDetections: 0,
-          monthlyDetections: 0,
-          totalFeedback: 0,
-          positiveFeedback: 0,
-          negativeFeedback: 0,
-          totalUsers: 0,
-          modelCount: 0,
-          speciesData: [],
-          recentHistory: [],
-          timeData: [],
-          uniqueSpecies: 0,
-          averageConfidence: 0,
-        });
+        setStats(null);
       } finally {
         setLoading(false);
       }
@@ -68,8 +55,9 @@ export default function Dashboard() {
     const fetchSpecies = async () => {
       try {
         setSpeciesLoading(true);
+        // Gọi API lấy loài, Backend đã tự lọc theo Active Model
+        // Lấy 12 loài để hiển thị trang chủ
         const data = await speciesService.getAllSpecies(0, 12);
-        console.log('Loài đã lấy:', data);
         setSpecies(data);
       } catch (error) {
         console.error('Lỗi khi lấy loài:', error);
@@ -80,11 +68,8 @@ export default function Dashboard() {
     };
 
     fetchStats();
-    if (!user) {
-      fetchSpecies();
-    } else {
-      setSpeciesLoading(false);
-    }
+    // Luôn fetch species để hiển thị ở trang public (khi chưa login) hoặc phần danh sách loài bên dưới
+    fetchSpecies();
   }, [user]);
 
   useEffect(() => {
